@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>行情中心 (Real-Time版)</title>
+<!-- 关键护城河：禁用 Referer，完美绕过金融 API 的防盗链拦截 -->
+<meta name="referrer" content="no-referrer">
+<title>行情中心 (Tencent数据源版)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -96,7 +98,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .btn-sm.danger:hover { background: var(--down-bg); color: var(--down); border-color: var(--down); }
 .btn-sm.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
 
-/* Search & Watchlist */
+/* Search */
 .add-bar { display: flex; gap: 8px; margin-bottom: 16px; position: relative; }
 .add-bar input { flex: 1; background: var(--card); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 9px 14px; font-size: 13px; color: var(--text); outline: none; }
 .add-bar input:focus { border-color: var(--text3); }
@@ -141,7 +143,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <button class="nav-btn active" onclick="switchPage('market')">大盘</button>
         <button class="nav-btn" onclick="switchPage('watchlist')">自选</button>
         <button class="nav-btn" onclick="switchPage('portfolio')">持仓</button>
-        <button class="nav-btn" onclick="switchPage('fx')">汇率</button>
+        <button class="nav-btn" onclick="switchPage('hk')">港美股</button>
       </nav>
     </div>
     <div class="topbar-right">
@@ -166,11 +168,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
         <div class="index-grid" id="cn-indices"></div>
       </div>
       <div class="section">
-        <div class="section-header"><span class="section-title">🇺🇸 美股指数</span></div>
+        <div class="section-header"><span class="section-title">🇺🇸 美股大盘</span></div>
         <div class="index-grid" id="us-indices"></div>
       </div>
       <div class="section">
-        <div class="section-header"><span class="section-title">🌏 热门 ETF 热力图</span></div>
+        <div class="section-header"><span class="section-title">🌏 热门板块 ETF</span></div>
         <div class="heatmap-grid" id="heatmap"></div>
       </div>
     </div>
@@ -196,7 +198,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 
     <!-- 持仓 -->
     <div id="page-portfolio" class="page">
-      <div style="display: flex; gap: 10px; margin-bottom: 16px;" id="portfolioSummary"></div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;" id="portfolioSummary"></div>
       <div class="section-header" style="margin-bottom:12px;">
         <span class="section-title">持仓明细</span>
         <span style="font-size:12px; color:var(--text3)">提示：请先在“自选”中搜索标的，点击【加仓】</span>
@@ -213,11 +215,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
       </div>
     </div>
 
-    <!-- 汇率 -->
-    <div id="page-fx" class="page">
+    <!-- 港美股核心 -->
+    <div id="page-hk" class="page">
       <div class="section">
-        <div class="section-header"><span class="section-title">实时汇率 (离岸)</span></div>
-        <div class="fx-grid" id="fxGrid"></div>
+        <div class="section-header"><span class="section-title">港美股特别观察</span></div>
+        <div class="fx-grid" id="hkGrid"></div>
       </div>
     </div>
   </main>
@@ -250,20 +252,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 
 <script>
 // ==================== STORAGE & CONFIG ====================
-const STORAGE_KEY = 'stockdash_real_v2';
-let store = { watchlist: [], portfolio: [] };
+const STORAGE_KEY = 'stockdash_real_tencent_v1';
+let store = { watchlist: [], portfolio:[] };
 let marketData = {}; // 缓存的实时数据
 
-// 基础市场配置
+// 基础市场配置（已替换为腾讯财经标准代码体系）
 const SYMBOLS = {
-  cn: ['sh000001','sz399001','sz399006','sh000688'], // A股大盘
-  us: ['gb_dji','gb_ixic','gb_inx','gb_vix'],       // 美股大盘
-  etf: [
+  cn:['sh000001','sz399001','sz399006','sh000688'], 
+  us:['usDJI','usIXIC','usINX'], 
+  etf:[
     {s:'sh512800', n:'银行'}, {s:'sz159928', n:'消费'}, {s:'sh512010', n:'医药'}, {s:'sh516160', n:'新能源'},
     {s:'sz159995', n:'芯片'}, {s:'sh515220', n:'煤炭'}, {s:'sh512200', n:'房地产'}, {s:'sz159869', n:'游戏'},
-    {s:'sh513050', n:'中概互联'}, {s:'sh518880', n:'黄金'}, {s:'sh513500', n:'标普500'}, {s:'sz162411', n:'原油'}
+    {s:'sh513050', n:'互联'}, {s:'sh518880', n:'黄金'}
   ],
-  fx: ['fx_susdcny','fx_seurcny','fx_shkdcny','fx_sjpycny','fx_sgbpcny','fx_saudcny']
+  hk:['hkHSI', 'hk00700', 'hk03690', 'hk01810', 'usAAPL', 'usTSLA', 'usNVDA']
 };
 
 function loadStore() {
@@ -272,29 +274,26 @@ function loadStore() {
 function saveStore() { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }
 loadStore();
 
-// ==================== API NETWORK ENGINE (JSONP) ====================
-// 解析新浪财经字符串
-function parseSinaData(sym, str) {
+// ==================== TENCENT API ENGINE ====================
+// 解析腾讯财经字符串
+function parseTencentData(sym, str) {
   if(!str) return null;
-  const p = str.split(',');
-  if(p.length < 3) return null;
-  let name, price=0, prev=0, change=0, pct=0, high=0, low=0;
+  const p = str.split('~');
+  if(p.length < 5) return null;
   
-  try {
-    if (sym.startsWith('gb_')) { // 美股
-      name = p[0]; price = +p[1]; pct = +p[2]; change = +p[4]; high = +p[6]; low = +p[7]; prev = +p[26];
-    } else if (sym.startsWith('rt_hk') || sym.startsWith('hk')) { // 港股
-      name = p[1]; price = +p[6]; prev = +p[3]; change = price - prev; pct = prev?(change/prev)*100:0; high = +p[4]; low = +p[5];
-    } else if (sym.startsWith('fx_s')) { // 汇率
-      name = sym.replace('fx_s','').toUpperCase(); price = +p[1]; prev = +p[3]; change = price - prev; pct = prev?(change/prev)*100:0; high = +p[6]; low = +p[7];
-    } else if (sym.startsWith('b_')) { // 全球指数
-      name = p[0]; price = +p[1]; change = +p[2]; pct = +p[3];
-    } else { // A股
-      name = p[0]; price = +p[3]; prev = +p[2]; change = price - prev; pct = prev?(change/prev)*100:0; high = +p[4]; low = +p[5];
-    }
-  } catch(e) {}
+  const name = p[1];
+  let price = +p[3];
+  let prev = +p[4];
+  let high = +p[33];
+  let low = +p[34];
   
-  if(!price && price !== 0) return null;
+  // 兼容停牌或开盘前
+  if (isNaN(price) || price === 0) price = prev; 
+  if (!prev) return null;
+
+  const change = price - prev;
+  const pct = (change / prev) * 100;
+  
   return { sym, name, price, change, pct, high, low, prev };
 }
 
@@ -305,21 +304,22 @@ function fetchAllData(callback) {
   isFetching = true;
   document.getElementById('refreshDot').classList.add('loading');
   
-  // 收集页面所需的所有代码
   const reqSet = new Set([
-    ...SYMBOLS.cn, ...SYMBOLS.us, ...SYMBOLS.etf.map(x=>x.s), ...SYMBOLS.fx,
+    ...SYMBOLS.cn, ...SYMBOLS.us, ...SYMBOLS.etf.map(x=>x.s), ...SYMBOLS.hk,
     ...store.watchlist.map(x=>x.sym), ...store.portfolio.map(x=>x.sym)
   ]);
   const reqList = Array.from(reqSet).join(',');
 
   const script = document.createElement('script');
-  script.src = `https://hq.sinajs.cn/list=${reqList}&_t=${Date.now()}`;
+  // 使用 HTTPS 的腾讯接口
+  script.src = `https://qt.gtimg.cn/q=${reqList}&_t=${Date.now()}`;
+  
   script.onload = () => {
     reqSet.forEach(sym => {
-      const vName = 'hq_str_' + sym;
-      if (window[vName]) {
-        marketData[sym] = parseSinaData(sym, window[vName]);
-        delete window[vName]; // 清理全局变量
+      const vName = 'v_' + sym;
+      if (typeof window[vName] === 'string') {
+        marketData[sym] = parseTencentData(sym, window[vName]);
+        delete window[vName]; 
       }
     });
     document.head.removeChild(script);
@@ -328,11 +328,18 @@ function fetchAllData(callback) {
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
     if(callback) callback();
   };
-  script.onerror = () => { isFetching = false; document.getElementById('refreshDot').classList.remove('loading'); };
+  
+  script.onerror = () => { 
+    isFetching = false; 
+    document.getElementById('refreshDot').classList.remove('loading'); 
+    document.getElementById('lastUpdate').textContent = "网络受限";
+    showToast('获取行情失败，请检查网络');
+  };
+  
   document.head.appendChild(script);
 }
 
-// 搜索联想 API (新浪)
+// 搜索联想 API (腾讯 Smartbox)
 let searchTimer;
 function handleSearch() {
   clearTimeout(searchTimer);
@@ -344,17 +351,18 @@ function doSearch() {
   if(!q) { resEl.style.display = 'none'; return; }
   
   const script = document.createElement('script');
-  window.suggestData = "";
-  script.src = `https://suggest3.sinajs.cn/suggest/type=&key=${q}&name=suggestData`;
+  window.v_hint = "";
+  script.src = `https://smartbox.gtimg.cn/s3/?v=2&q=${q}&t=all`;
   script.onload = () => {
-    if(!window.suggestData) { resEl.style.display = 'none'; return; }
-    const items = window.suggestData.split(';').filter(x=>x);
-    if(items.length === 0) { resEl.style.display = 'none'; return; }
+    if(!window.v_hint) { resEl.style.display = 'none'; return; }
+    const items = window.v_hint.split(';');
+    if(items.length === 0 || !items[0]) { resEl.style.display = 'none'; return; }
     
     resEl.innerHTML = items.slice(0, 8).map(item => {
-      const p = item.split(','); // type,type,code,symbol,name,pinyin
-      return `<div class="search-result-item" onmousedown="addToWatchlist('${p[3]}', '${p[4]}')">
-        <div><div style="font-weight:500;font-size:13px">${p[4]}</div><div style="font-family:var(--mono);font-size:11px;color:var(--text3)">${p[3]}</div></div>
+      const p = item.split('^'); 
+      if(p.length < 3) return '';
+      return `<div class="search-result-item" onmousedown="addToWatchlist('${p[0]}', '${p[2]}')">
+        <div><div style="font-weight:500;font-size:13px">${p[2]}</div><div style="font-family:var(--mono);font-size:11px;color:var(--text3)">${p[0]}</div></div>
         <span class="btn-sm primary">+ 自选</span>
       </div>`;
     }).join('');
@@ -431,7 +439,7 @@ function renderWatchlist() {
   
   body.innerHTML = store.watchlist.map(w => {
     const d = marketData[w.sym];
-    if(!d) return `<tr><td>${w.name}<br><span class="stock-code">${w.sym}</span></td><td colspan="4" class="r text3">加载中...</td></tr>`;
+    if(!d) return `<tr><td>${w.name}<br><span class="stock-code">${w.sym}</span></td><td colspan="4" class="r text3">同步中...</td></tr>`;
     const sign = d.pct > 0 ? '+' : '';
     return `<tr>
       <td><div class="stock-name">${w.name}</div><div class="stock-code">${w.sym}</div></td>
@@ -470,7 +478,7 @@ function renderPortfolio() {
       <td class="r mono">${fmt(mVal)}</td>
       <td class="r mono ${cls(pnl)}">${sign}${fmt(pnl)} <span style="font-size:11px">(${sign}${pnlPct.toFixed(1)}%)</span></td>
       <td class="r"><div class="stock-actions">
-        <button class="btn-sm danger" onclick="delPortfolio('${p.sym}')">卖出/删除</button>
+        <button class="btn-sm danger" onclick="delPortfolio('${p.sym}')">卖出</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -482,20 +490,23 @@ function renderPortfolio() {
       <div style="font-size:11px; color:var(--text3)">总市值</div><div class="mono" style="font-size:18px; font-weight:500">${fmt(totalMarket)}</div>
     </div>
     <div style="background:var(--card); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--border)">
+      <div style="font-size:11px; color:var(--text3)">总成本</div><div class="mono" style="font-size:18px; font-weight:500">${fmt(totalCost)}</div>
+    </div>
+    <div style="background:var(--card); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--border)">
       <div style="font-size:11px; color:var(--text3)">总盈亏</div><div class="mono ${cls(totPnl)}" style="font-size:18px; font-weight:500">${totPnl>0?'+':''}${fmt(totPnl)} (${totPct.toFixed(2)}%)</div>
     </div>
   `;
 }
 
-function renderFX() {
-  document.getElementById('fxGrid').innerHTML = SYMBOLS.fx.map(sym => {
+function renderHK() {
+  document.getElementById('hkGrid').innerHTML = SYMBOLS.hk.map(sym => {
     const d = marketData[sym];
-    if(!d) return `<div class="fx-card">--</div>`;
+    if(!d) return `<div class="fx-card"><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">${sym}</div><div class="index-value">--</div></div>`;
     const sign = d.pct > 0 ? '+' : '';
     return `<div class="fx-card">
-      <div style="font-size:11px; color:var(--text3); font-family:var(--mono); margin-bottom:4px;">${d.name}</div>
-      <div style="font-family:var(--mono); font-size:22px; font-weight:500; margin-bottom:6px;" class="${cls(d.pct)}">${fmt(d.price, 4)}</div>
-      <div>${tag(d.pct, sign+d.pct.toFixed(2)+'%')}</div>
+      <div style="font-size:13px; font-weight:500; margin-bottom:4px;">${d.name} <span style="font-size:10px;color:var(--text3);font-weight:normal">${sym}</span></div>
+      <div style="font-family:var(--mono); font-size:22px; font-weight:500; margin-bottom:6px;" class="${cls(d.pct)}">${fmt(d.price)}</div>
+      <div>${tag(d.pct, sign+d.pct.toFixed(2)+'%')} <span class="change-pt ${cls(d.pct)}" style="margin-left:6px;">${sign}${fmt(d.change)}</span></div>
     </div>`;
   }).join('');
 }
@@ -515,7 +526,7 @@ function renderView() {
   if(curPage === 'market') renderMarket();
   else if(curPage === 'watchlist') renderWatchlist();
   else if(curPage === 'portfolio') renderPortfolio();
-  else if(curPage === 'fx') renderFX();
+  else if(curPage === 'hk') renderHK();
 }
 
 function addToWatchlist(sym, name) {
@@ -524,7 +535,7 @@ function addToWatchlist(sym, name) {
   if(store.watchlist.find(x => x.sym === sym)) return showToast('已在自选列表中');
   store.watchlist.push({ sym, name }); saveStore();
   showToast('添加成功');
-  fetchAllData(renderView); // Fetch new item immediately
+  fetchAllData(renderView);
 }
 function delWatchlist(sym) { store.watchlist = store.watchlist.filter(x => x.sym !== sym); saveStore(); renderView(); showToast('已删除'); }
 
